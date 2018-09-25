@@ -1,10 +1,3 @@
-/*
- * particle_filter.cpp
- *
- *  Created on: Dec 12, 2016
- *      Author: Tiffany Huang
- */
-
 #include <random>
 #include <algorithm>
 #include <iostream>
@@ -14,16 +7,38 @@
 #include <sstream>
 #include <string>
 #include <iterator>
-
+#include "config.h"
 #include "particle_filter.h"
 
 using namespace std;
 
-void ParticleFilter::init(double x, double y, double theta, double std[]) {
+void ParticleFilter::init(double gps_x, double gps_y, double gps_theta, double gps_std[]) {
 	// TODO: Set the number of particles. Initialize all particles to first position (based on estimates of 
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
 	// Add random Gaussian noise to each particle.
-	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
+
+	// Set number of particles
+	int num_particles = ConfigParams::numOfParticles;
+	particles.resize(num_particles);
+	weights.resize(num_particles, 1.0);
+	
+	// Gaussian 
+	default_random_engine gen;
+	normal_distribution<double> dist_x(gps_x, gps_std[0]);
+	normal_distribution<double> dist_y(gps_y, gps_std[1]);
+	normal_distribution<double> dist_theta(gps_theta, gps_std[2]);
+
+	for(int i = 0; i < num_particles; ++i)
+	{
+		particles[i].id = i;
+		particles[i].x = dist_x(gen);
+		particles[i].y = dist_y(gen);
+		particles[i].theta = dist_theta(gen);
+		particles[i].weight = 1.0;
+	}
+
+	// Set the initialization flag to true;
+	is_initialized = true;
 
 }
 
@@ -32,7 +47,39 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	// NOTE: When adding noise you may find std::normal_distribution and std::default_random_engine useful.
 	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
 	//  http://www.cplusplus.com/reference/random/default_random_engine/
+	
+	
+	default_random_engine gen;
+	// Zero mean
+	normal_distribution<double> dist_x(0, std_pos[0]);
+	normal_distribution<double> dist_y(0, std_pos[1]);
+	normal_distribution<double> dist_theta(0, std_pos[2]);
 
+
+	// Update the position
+	for(int i = 0; i < num_particles; ++i)
+	{
+		auto& x = particles[i].x;
+		auto& y = particles[i].y;
+		auto& theta = particles[i].theta;
+
+		// Check the yaw_rate
+		if(yaw_rate < 0.0001)
+		{
+			x += velocity * delta_t * cos(theta) + dist_x(gen);
+			y += velocity * delta_t * sin(theta) + dist_y(gen);
+			theta += dist_theta(gen);
+		}
+		else
+		{
+			x += (velocity / yaw_rate) * (sin(theta + yaw_rate * delta_t) - sin(theta)) + dist_x(gen);
+			y += (velocity / yaw_rate) * (cos(theta) - cos(theta + yaw_rate * delta_t)) + dist_y(gen);
+			theta += yaw_rate * delta_t + dist_theta(gen);
+		}
+
+		// Normalize the angle
+		theta = std::fmod(theta, 2.0 * M_PI);
+	}
 }
 
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {

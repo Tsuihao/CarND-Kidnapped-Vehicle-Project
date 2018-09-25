@@ -13,7 +13,7 @@
 
 struct Particle {
 
-	int id;
+	int id; // I think we do not need this
 	double x;
 	double y;
 	double theta;
@@ -29,8 +29,6 @@ class ParticleFilter {
 	
 	// Number of particles to draw
 	int num_particles; 
-	
-	
 	
 	// Flag, if filter is initialized
 	bool is_initialized;
@@ -53,13 +51,13 @@ public:
 	/**
 	 * init Initializes particle filter by initializing particles to Gaussian
 	 *   distribution around first position and all the weights to 1.
-	 * @param x Initial x position [m] (simulated estimate from GPS)
-	 * @param y Initial y position [m]
-	 * @param theta Initial orientation [rad]
-	 * @param std[] Array of dimension 3 [standard deviation of x [m], standard deviation of y [m]
+	 * @param gps_x Initial x position [m] (simulated estimate from GPS)
+	 * @param gps_y Initial y position [m]
+	 * @param gps_theta Initial orientation [rad]
+	 * @param gps_std[] Array of dimension 3 [standard deviation of x [m], standard deviation of y [m]
 	 *   standard deviation of yaw [rad]]
 	 */
-	void init(double x, double y, double theta, double std[]);
+	void init(double gps_x, double gps_y, double gps_theta, double gps_std[]);
 
 	/**
 	 * prediction Predicts the state for the next time step

@@ -4,9 +4,6 @@
 struct ConfigParams
 {
     static const int numOfParticles = 10000;
-}
-
-
-
+};
 
 #endif
