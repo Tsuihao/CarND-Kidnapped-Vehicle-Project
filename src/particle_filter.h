@@ -23,7 +23,12 @@ struct Particle {
 	std::vector<double> sense_y;
 };
 
-
+// Internal data structure for the aasociation result
+struct AssocResult
+{
+	int from;
+	int to; 
+}
 
 class ParticleFilter {
 	
@@ -76,7 +81,7 @@ public:
 	 * @param predicted Vector of predicted landmark observations
 	 * @param observations Vector of landmark observations
 	 */
-	void dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations);
+	std::vector<AssocResult> dataAssociation(std::vector<LandmarkObs> tracked_observations, std::vector<LandmarkObs>& observations);
 	
 	/**
 	 * updateWeights Updates the weights for each particle based on the likelihood of the 
@@ -113,6 +118,17 @@ public:
 	const bool initialized() const {
 		return is_initialized;
 	}
+
+private:
+	/**
+	 * Convert from vehicle coordinate system to local coordinate system
+	 */
+	void vcsToLcs(const Particle&, const vector<LandmarkObs>&, vector<LandmarkObs>&);
+
+	/**
+	 * Helper function to convert the data format
+	 */
+	void extrackTrackedObservations(const Map&, vector<LandmarkObs>&)
 };
 
 

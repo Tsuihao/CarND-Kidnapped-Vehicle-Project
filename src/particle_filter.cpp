@@ -82,12 +82,33 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	}
 }
 
-void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
+vector<AssocResult> ParticleFilter::dataAssociation(std::vector<LandmarkObs> tracked_observations, std::vector<LandmarkObs>& observations) {
 	// TODO: Find the predicted measurement that is closest to each observed measurement and assign the 
 	//   observed measurement to this particular landmark.
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
 	//   implement this method and use it as a helper during the updateWeights phase.
+	vector<AssocResult> result(observations.size());
 
+	for(int i = 0; i < observations.size(); ++i)
+	{
+		const auto& x = observations[i].x;
+		const auto& y = observations[i].y;
+		double thres = std::numerical_limits<double>::max;
+		for(int j = 0; j < tracked_observations.size(); ++j)
+		{
+			const auto& dx = tracked_observations[i].x - x;
+			const auto& dy = tracked_observations[i].y - y;
+			double dist_square = dx * dx + dy * dy;
+
+			if(dist_square < thres)
+			{
+				result[i].from = i; // from observation
+				result[i].to   = j; // to tracked observation
+				thres = dist_square;// update threshod
+			}
+		}
+	}
+	return result;
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -102,6 +123,21 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+	
+	for(int i = 0; i < num_particles; ++i)
+	{
+		vector<LandmarkObs> observationsInLcs(observations.size()); // observation in local coordinate system
+		vector<LandmarkObs> tracked_observations(map_landmarks.landmark_list.size());
+		vector<AssocResult> result(observations.size());
+
+		const auto& particle = particles[i];
+		vcsToLcs(particle ,observations, observationsInLcs); // map into same coordinate system 
+		extractTrackedObservations(map_landmarks, tracked_observations);
+		result = dataAssociation(tracked_observations, observationsInLcs);
+	}
+
+
+	
 }
 
 void ParticleFilter::resample() {
@@ -150,4 +186,22 @@ string ParticleFilter::getSenseY(Particle best)
     string s = ss.str();
     s = s.substr(0, s.length()-1);  // get rid of the trailing space
     return s;
+}
+
+void ParticleFilter::vcsToLcs(const vector<LandmarkObs>& observationsInVcs, vector<LandmarkObs>& observationsInLcs)
+{
+
+}
+
+void ParticleFilter::extrackTrackedObservations(const Map& map, vector<LandmarkObs>& landmarks)
+{
+	landmarks.resize(map.landmark_list.size());
+
+	for(int i = 0; i < landmarks.size(); ++i)
+	{
+		auto& mark = map.single_landmark_s[i];
+		landmarks[i].id = mark.id_i;
+		landmarks[i].x = mark.x_f;
+		landmarks[i].y = mark.y_f;
+	}
 }
