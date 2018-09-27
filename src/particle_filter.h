@@ -13,7 +13,7 @@
 
 struct Particle {
 
-	int id; // I think we do not need this
+	int id;
 	double x;
 	double y;
 	double theta;
@@ -26,9 +26,9 @@ struct Particle {
 // Internal data structure for the aasociation result
 struct AssocResult
 {
-	int from;
-	int to; 
-}
+	int from; // observation
+	int to;   // tracked observation
+};
 
 class ParticleFilter {
 	
@@ -123,12 +123,15 @@ private:
 	/**
 	 * Convert from vehicle coordinate system to local coordinate system
 	 */
-	void vcsToLcs(const Particle&, const vector<LandmarkObs>&, vector<LandmarkObs>&);
+	void vcsToLcs(const Particle&, const std::vector<LandmarkObs>&, std::vector<LandmarkObs>&);
 
 	/**
 	 * Helper function to convert the data format
 	 */
-	void extrackTrackedObservations(const Map&, vector<LandmarkObs>&)
+	void mapToLandmark(const Map&, std::vector<LandmarkObs>&);
+
+
+	double multiGaussianProbDensity(const std::vector<AssocResult>&,  const std::vector<LandmarkObs>&, const std::vector<LandmarkObs>&, const double*);
 };
 
 

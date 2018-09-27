@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iostream>
 #include <numeric>
+#include <limits>
 #include <math.h> 
 #include <iostream>
 #include <sstream>
@@ -93,17 +94,20 @@ vector<AssocResult> ParticleFilter::dataAssociation(std::vector<LandmarkObs> tra
 	{
 		const auto& x = observations[i].x;
 		const auto& y = observations[i].y;
-		double thres = std::numerical_limits<double>::max;
+		const auto& id_obe = observations[i].id;
+		double thres = numeric_limits<double>::max();
 		for(int j = 0; j < tracked_observations.size(); ++j)
 		{
 			const auto& dx = tracked_observations[i].x - x;
 			const auto& dy = tracked_observations[i].y - y;
+			const auto& id_track = tracked_observations[i].id;
 			double dist_square = dx * dx + dy * dy;
+
 
 			if(dist_square < thres)
 			{
-				result[i].from = i; // from observation
-				result[i].to   = j; // to tracked observation
+				result[i].from = id_obe; // from observation
+				result[i].to   = id_track; // to tracked observation
 				thres = dist_square;// update threshod
 			}
 		}
@@ -124,20 +128,22 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
 	
+	vector<LandmarkObs> observationsInLcs(observations.size()); // observation in local coordinate system
+	vector<LandmarkObs> tracked_observations(map_landmarks.landmark_list.size());
+
 	for(int i = 0; i < num_particles; ++i)
 	{
-		vector<LandmarkObs> observationsInLcs(observations.size()); // observation in local coordinate system
-		vector<LandmarkObs> tracked_observations(map_landmarks.landmark_list.size());
+
 		vector<AssocResult> result(observations.size());
 
 		const auto& particle = particles[i];
 		vcsToLcs(particle ,observations, observationsInLcs); // map into same coordinate system 
-		extractTrackedObservations(map_landmarks, tracked_observations);
+		mapToLandmark(map_landmarks, tracked_observations);
 		result = dataAssociation(tracked_observations, observationsInLcs);
+
+		// Update weights for each particle
+		particles[i].weight = multiGaussianProbDensity(result, observationsInLcs, tracked_observations, std_landmark);
 	}
-
-
-	
 }
 
 void ParticleFilter::resample() {
@@ -145,6 +151,36 @@ void ParticleFilter::resample() {
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
 
+	default_random_engine gen;
+	
+	// Sum up all the weights for calcaulate the percentatge of each particles
+	double total_weight = 0.0;
+	
+	for(int i = 0; i < num_particles; ++i)
+	{
+		total_weight += particles[i].weight;
+	}
+
+	// Fill in the percentage of weight for each particle
+	for(int i = 0; i < num_particles; ++i)
+	{
+		weights[i] = particles[i].weight / total_weight;
+	}
+
+	// Build the discrete distribution
+	discrete_distribution<int> dist(weights.begin(), weights.end());
+
+	std::vector<Particle> newParticles(num_particles);
+	
+	// Resampling
+	for(int i = 0; i < num_particles; ++i)
+	{
+		int id = dist(gen); // generate the random id base on the weigth of each particle
+		newParticles[i] = particles[id];
+	}
+
+	// Update
+	particles = newParticles;
 }
 
 Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<int>& associations, 
@@ -188,20 +224,76 @@ string ParticleFilter::getSenseY(Particle best)
     return s;
 }
 
-void ParticleFilter::vcsToLcs(const vector<LandmarkObs>& observationsInVcs, vector<LandmarkObs>& observationsInLcs)
+void ParticleFilter::vcsToLcs(const Particle& particle, const vector<LandmarkObs>& observationsInVcs, vector<LandmarkObs>& observationsInLcs)
 {
+	//1. Assign the basic property
+	observationsInLcs = observationsInVcs;
 
+	//2. Build up the transformation matrix
+	// | x |     | cos -sin x_t |   | x |
+	// | y |  =  | sin cos  y_t | * | y |
+	// | 1 |     | 0    0     1 |   | 1 | 
+	//  lcs                           vcs
+
+	//3. Transform all the measurements from VCS to LCS
+	const auto& theta = particle.theta;
+	const auto& x_t = particle.x;
+	const auto& y_t = particle.y;
+	
+	for(int i = 0; i < observationsInLcs.size(); ++i)
+	{
+		const auto& x_vcs = observationsInVcs[i].x;
+		const auto& y_vcs = observationsInVcs[i].y;
+		observationsInLcs[i].x = cos(theta) * x_vcs - sin(theta) * y_vcs + x_t;
+		observationsInLcs[i].y = sin(theta) * x_vcs + cos(theta) * y_vcs + y_t;
+	}
 }
 
-void ParticleFilter::extrackTrackedObservations(const Map& map, vector<LandmarkObs>& landmarks)
+void ParticleFilter::mapToLandmark(const Map& map, vector<LandmarkObs>& landmarks)
 {
 	landmarks.resize(map.landmark_list.size());
 
 	for(int i = 0; i < landmarks.size(); ++i)
 	{
-		auto& mark = map.single_landmark_s[i];
+		auto& mark = map.landmark_list[i];
 		landmarks[i].id = mark.id_i;
 		landmarks[i].x = mark.x_f;
 		landmarks[i].y = mark.y_f;
 	}
+}
+
+
+double ParticleFilter::multiGaussianProbDensity(const std::vector<AssocResult>& result,  
+												const std::vector<LandmarkObs>& observations, 
+												const std::vector<LandmarkObs>& tracked_observations, 
+												const double* std_landmark)
+{
+	double prob = 1.0;
+	const double std_x = std_landmark[0];
+	const double std_y = std_landmark[1]; 
+
+	// All the measurements 
+	for(int i = 0; i < observations.size(); ++i)
+	{
+		// extract the id from result.
+		const auto& from = result[i].from;
+		const auto& to = result[i].to;
+
+		// Here suppose to search the corresponding id inside both observations and tracked_observations
+		// However, it is alreay known that the id is just the index.
+		const auto& x = observations[from].x;
+		const auto& y = observations[from].y;
+		const auto& mu_x = tracked_observations[to].x;
+		const auto& mu_y = tracked_observations[to].y;
+
+
+		double gauss_norm = (1/(2*M_PI*std_x*std_y));
+		double exponent = (x-mu_x)*(x-mu_x)/(2*std_x*std_x) + (y-mu_y)*(y-mu_y)/(2*std_y*std_y);
+		double gaussain = exp(-exponent) * gauss_norm;
+
+		prob *= gaussain;
+		
+	}
+
+	return prob;
 }
