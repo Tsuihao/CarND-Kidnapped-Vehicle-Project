@@ -23,13 +23,6 @@ struct Particle {
 	std::vector<double> sense_y;
 };
 
-// Internal data structure for the aasociation result
-struct AssocResult
-{
-	int from; // observation
-	int to;   // tracked observation
-};
-
 class ParticleFilter {
 	
 	// Number of particles to draw
@@ -81,7 +74,7 @@ public:
 	 * @param predicted Vector of predicted landmark observations
 	 * @param observations Vector of landmark observations
 	 */
-	std::vector<AssocResult> dataAssociation(std::vector<LandmarkObs> tracked_observations, std::vector<LandmarkObs>& observations);
+	void dataAssociation(const std::vector<LandmarkObs>& tracked_observations, std::vector<LandmarkObs>& observations);
 	
 	/**
 	 * updateWeights Updates the weights for each particle based on the likelihood of the 
@@ -128,10 +121,10 @@ private:
 	/**
 	 * Helper function to convert the data format
 	 */
-	void mapToLandmark(const Map&, std::vector<LandmarkObs>&);
+	void mapToLandmark(const Particle&, const int&, const Map&, std::vector<LandmarkObs>&);
 
 
-	double multiGaussianProbDensity(const std::vector<AssocResult>&,  const std::vector<LandmarkObs>&, const std::vector<LandmarkObs>&, const double*);
+	double multiGaussianProbDensity(const std::vector<LandmarkObs>&, const std::vector<LandmarkObs>&, const double*);
 };
 
 
