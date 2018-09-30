@@ -10,9 +10,9 @@
 #include <iterator>
 #include "config.h"
 #include "particle_filter.h"
-#define verbose_particles false
-#define verbose_association false
-#define verbose_weights false
+#define verbose_particles true
+#define verbose_association true
+#define verbose_weights true
 
 using namespace std;
 
@@ -66,37 +66,35 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	// Update the position
 	for(int i = 0; i < num_particles; ++i)
 	{
-		auto& x = particles[i].x;
-		auto& y = particles[i].y;
-		auto& theta = particles[i].theta;
+		auto& p = particles[i];
 
 		// Check the yaw_rate
-		if(yaw_rate < 0.0001)
+		if(fabs(yaw_rate) < 0.001)
 		{
-			x += velocity * delta_t * cos(theta) + dist_x(gen);
-			y += velocity * delta_t * sin(theta) + dist_y(gen);
-			theta += dist_theta(gen);
+			p.x += velocity * delta_t * cos(p.theta) + dist_x(gen);
+			p.y += velocity * delta_t * sin(p.theta) + dist_y(gen);
+			p.theta += dist_theta(gen);
 		}
 		else
 		{
-			double a = theta + yaw_rate * delta_t;
-			x += (velocity / yaw_rate) * (sin(a) - sin(theta)) + dist_x(gen);
-			y += (velocity / yaw_rate) * (cos(theta) - cos(a)) + dist_y(gen);
-			theta += yaw_rate * delta_t + dist_theta(gen);
+			double a = p.theta + yaw_rate * delta_t;
+			p.x += (velocity / yaw_rate) * (sin(a) - sin(p.theta)) + dist_x(gen);
+			p.y += (velocity / yaw_rate) * (cos(p.theta) - cos(a)) + dist_y(gen);
+			p.theta += yaw_rate * delta_t + dist_theta(gen);
 		}
 
 		// Normalize the angle
-		theta = std::fmod(theta, 2.0 * M_PI);
+		//p.theta = std::fmod(p.theta, 2.0 * M_PI);
 
 		if(verbose_particles)
 		{
-			cout<<"particle ["<<i<<"], x="<<x<<", y="<<y<<", theta="<<theta<<endl;
+			cout<<"particle ["<<i<<"], x="<<p.x<<", y="<<p.y<<", theta="<<p.theta<<endl;
 		}
 		
 	}
 }
 
-void ParticleFilter::dataAssociation(const std::vector<LandmarkObs>& tracked_observations, std::vector<LandmarkObs>& observations) {
+void ParticleFilter::dataAssociation(const std::vector<LandmarkObs>& landmarks, std::vector<LandmarkObs>& observations) {
 	// TODO: Find the predicted measurement that is closest to each observed measurement and assign the 
 	//   observed measurement to this particular landmark.
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
@@ -107,19 +105,20 @@ void ParticleFilter::dataAssociation(const std::vector<LandmarkObs>& tracked_obs
 	{
 		const auto& x = observations[i].x;
 		const auto& y = observations[i].y;
+		observations[i].id = -1; // assign an inalid value
 		double thres = numeric_limits<double>::max();
 
-		for(int j = 0; j < tracked_observations.size(); ++j)
+		for(int j = 0; j < landmarks.size(); ++j)
 		{
-			const auto& dx = tracked_observations[j].x - x;
-			const auto& dy = tracked_observations[j].y - y;
-			const auto& id_track = tracked_observations[j].id;
+			const auto& dx = landmarks[j].x - x;
+			const auto& dy = landmarks[j].y - y;
+			auto id_landmark = landmarks[j].id;
 			double dist_square = dx * dx + dy * dy;
 
 
 			if(dist_square < thres)
 			{
-				observations[i].id = id_track;  // use the empty observations[i].id to store the corresponding tracked id
+				observations[i].id = id_landmark;  // use the empty observations[i].id to store the corresponding landmark id
 				thres = dist_square;// update threshod
 			}
 		}
@@ -148,25 +147,25 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
 	
-	vector<LandmarkObs> observationsInLcs(observations.size()); // observation in local coordinate system
-	vector<LandmarkObs> tracked_observations(map_landmarks.landmark_list.size());
-	cout<<"[updateWeights] sensor_range="<<sensor_range<<endl;
-
 	for(int i = 0; i < num_particles; ++i)
 	{
+		vector<LandmarkObs> observationsInLcs(observations.size()); // observation in local coordinate system
+		vector<LandmarkObs> landmarks; // the size will be determined later
 		const auto& particle = particles[i];
 		
-		// Transform from VCS to LCS
+		// Transform observations from VCS to LCS
 		vcsToLcs(particle ,observations, observationsInLcs); // data association is in LCS
 		
-		// Extract lane markers
-		mapToLandmark(particle, sensor_range, map_landmarks, tracked_observations); // use particle position to filter out based on sensor range
+		// Extract lane markers with sensor range
+		mapToLandmark(particle, sensor_range, map_landmarks, landmarks); // use particle position to filter out based on sensor range
 		
-		// Association
-		dataAssociation(tracked_observations, observationsInLcs);
+		// Association observations -> landmarks
+		dataAssociation(landmarks, observationsInLcs);
 
 		// Update weights for each particle
-		particles[i].weight = multiGaussianProbDensity(observationsInLcs, tracked_observations, std_landmark);
+		cout<<"[updateWeights] particle ["<<i<<"]:"<<endl;
+		particles[i].weight = multiGaussianProbDensity(observationsInLcs, landmarks, std_landmark);
+		//particles[i].weight = mulGau(observationsInLcs, map_landmarks, std_landmark);
 
 		if(verbose_weights)
 		{
@@ -223,80 +222,74 @@ void ParticleFilter::vcsToLcs(const Particle& particle, const vector<LandmarkObs
 	//  lcs                           vcs
 
 	//3. Transform all the measurements from VCS to LCS
-	const auto& theta = particle.theta;
-	const auto& x_t = particle.x;
-	const auto& y_t = particle.y;
-	
-	for(int i = 0; i < observationsInLcs.size(); ++i)
+	for(int i = 0; i < observationsInVcs.size(); ++i)
 	{
-		const auto& x_vcs = observationsInVcs[i].x;
-		const auto& y_vcs = observationsInVcs[i].y;
-		observationsInLcs[i].x = cos(theta) * x_vcs - sin(theta) * y_vcs + x_t;
-		observationsInLcs[i].y = sin(theta) * x_vcs + cos(theta) * y_vcs + y_t;
+		const auto& ob_vcs = observationsInVcs[i];
+		observationsInLcs[i].x = cos(particle.theta) * ob_vcs.x - sin(particle.theta) * ob_vcs.y + particle.x;
+		observationsInLcs[i].y = sin(particle.theta) * ob_vcs.x + cos(particle.theta) * ob_vcs.y + particle.y;
 	}
 }
 
-void ParticleFilter::mapToLandmark(const Particle& particle, const int& sensorRange, const Map& map, vector<LandmarkObs>& landmarks)
+void ParticleFilter::mapToLandmark(const Particle& p, const int& sensorRange, const Map& map, vector<LandmarkObs>& landmarks)
 {
-	auto&x = particle.x;
-	auto&y = particle.y;
-
-
 
 	for(int i = 0; i < map.landmark_list.size(); ++i)
 	{
-		auto& mark = map.landmark_list[i];
-		// Test the sensor range
-		auto dx = x - mark.x_f;
-		auto dy = y - mark.y_f;
-		auto dist_square = dx*dx + dy*dy;
+		auto mark = map.landmark_list[i];
 
-		if(dist_square <= sensorRange*sensorRange) // use squre to avoid expensive sqrt
+		// Test the sensor range
+		auto distance = dist(p.x, p.y, mark.x_f, mark.y_f);
+		if(distance <= sensorRange) 
 		{
-			landmarks.push_back(LandmarkObs{mark.id_i, mark.x_f, mark.y_f});
+			LandmarkObs obs;
+			obs.id = mark.id_i;
+			obs.x  = mark.x_f;
+			obs.y  = mark.y_f;
+			landmarks.push_back(obs);
 		}
 	}
 }
 
 
-double ParticleFilter::multiGaussianProbDensity(const std::vector<LandmarkObs>& observations, 
-												const std::vector<LandmarkObs>& tracked_observations, 
+double ParticleFilter::multiGaussianProbDensity(const vector<LandmarkObs>& observations, 
+												const vector<LandmarkObs>& landmarks, 
 												const double* std_landmark)
 {
 	double prob = 1.0;
 	const double std_x = std_landmark[0];
 	const double std_y = std_landmark[1]; 
 
+	cout<<"[multiGaussianProbDensity] observations.size()="<<observations.size()<<endl;
+	cout<<"[multiGaussianProbDensity] landmarks.size()="<<landmarks.size()<<endl;
+
 	// All the measurements 
 	for(int i = 0; i < observations.size(); ++i)
 	{
-		for(int j = 0; j < tracked_observations.size(); ++j)
+		for(int j = 0; j < landmarks.size(); ++j)
 		{
 			// Here suppose to search the corresponding id inside both observations and tracked_observations
-			if(observations[i].id == tracked_observations[j].id)
+			if(observations[i].id == landmarks[j].id)
 			{
 				
-				const auto& x = observations[i].x;
-				const auto& y = observations[i].y;
-				const auto& mu_x = tracked_observations[j].x;
-				const auto& mu_y = tracked_observations[j].y;
-				const auto& dx = x - mu_x;
-				const auto& dy = y - mu_y;
-
-				double gauss_norm = (1/(2*M_PI*std_x*std_y));
-				double exponent = (dx*dx)/(2*std_x*std_x) + (dy*dy)/(2*std_y*std_y);
-				prob *=  gauss_norm * exp(-exponent);
-
+				const auto x = observations[i].x;
+				const auto y = observations[i].y;
+				const auto mu_x = landmarks[j].x;
+				const auto mu_y = landmarks[j].y;
+				prob *=  multivariate_gaussian(x, y, mu_x, mu_y, std_x, std_y);
+				continue;
 			}
-			else
-			{
-				return 0.0; //TBD
-			}	
-
 		}
-		
 	}
 	return prob;
+	
+}
+
+double ParticleFilter::multivariate_gaussian(double x, double y, double mu_x, double mu_y, double sig_x, double sig_y) 
+{
+return exp(-(
+	  (pow(x - mu_x, 2) / (2 * pow(sig_x, 2)) +
+	   pow(y - mu_y, 2) / (2 * pow(sig_y, 2))
+	  ))) / (2 * M_PI * sig_x * sig_y);
 }
 
 Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<int>& associations, 
