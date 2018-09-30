@@ -123,10 +123,6 @@ private:
 	 */
 	void mapToLandmark(const Particle&, const int&, const Map&, std::vector<LandmarkObs>&);
 
-	double mulGau(const std::vector<LandmarkObs>& observations, 
-							  const Map& map_landmarks,
-							  const double* std_landmark);
-
 
 	double multiGaussianProbDensity(const std::vector<LandmarkObs>&, const std::vector<LandmarkObs>&, const double*);
 

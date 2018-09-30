@@ -3,7 +3,7 @@
 
 struct ConfigParams
 {
-    static const int numOfParticles = 50;
+    static const int numOfParticles = 100;
 };
 
 #endif

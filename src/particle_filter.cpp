@@ -10,9 +10,10 @@
 #include <iterator>
 #include "config.h"
 #include "particle_filter.h"
-#define verbose_particles true
-#define verbose_association true
-#define verbose_weights true
+#define verbose_particles false
+#define verbose_association false
+#define verbose_weights false
+#define verbose false
 
 using namespace std;
 
@@ -23,11 +24,14 @@ void ParticleFilter::init(double gps_x, double gps_y, double gps_theta, double g
 
 	// Set number of particles
 	num_particles = ConfigParams::numOfParticles;
-	cout<<"[init] num_particles="<<num_particles<<endl;
 	particles.resize(num_particles);
 	weights.resize(num_particles, 1.0);
 	
-	cout<<"[init] gps: x="<<gps_x<<", y="<<gps_y<<", theta="<<gps_theta<<endl;
+	if(verbose)
+	{
+		cout<<"[init] num_particles="<<num_particles<<endl;
+		cout<<"[init] gps: x="<<gps_x<<", y="<<gps_y<<", theta="<<gps_theta<<endl;
+	}
 
 	// Gaussian 
 	default_random_engine gen;
@@ -163,7 +167,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		dataAssociation(landmarks, observationsInLcs);
 
 		// Update weights for each particle
-		cout<<"[updateWeights] particle ["<<i<<"]:"<<endl;
+		if(verbose) {cout<<"[updateWeights] particle ["<<i<<"]:"<<endl;}
 		particles[i].weight = multiGaussianProbDensity(observationsInLcs, landmarks, std_landmark);
 		//particles[i].weight = mulGau(observationsInLcs, map_landmarks, std_landmark);
 
@@ -258,9 +262,11 @@ double ParticleFilter::multiGaussianProbDensity(const vector<LandmarkObs>& obser
 	double prob = 1.0;
 	const double std_x = std_landmark[0];
 	const double std_y = std_landmark[1]; 
-
-	cout<<"[multiGaussianProbDensity] observations.size()="<<observations.size()<<endl;
-	cout<<"[multiGaussianProbDensity] landmarks.size()="<<landmarks.size()<<endl;
+	if(verbose)
+	{
+		cout<<"[multiGaussianProbDensity] observations.size()="<<observations.size()<<endl;
+		cout<<"[multiGaussianProbDensity] landmarks.size()="<<landmarks.size()<<endl;
+	}
 
 	// All the measurements 
 	for(int i = 0; i < observations.size(); ++i)
